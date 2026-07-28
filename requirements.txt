@@ -1,0 +1,10 @@
+fastapi
+uvicorn
+insightface
+opencv-python-headless
+numpy
+pydantic
+gunicorn
+python-multipart
+python-dotenv
+a2wsgi

@@ -308,7 +308,7 @@ async def webcam_tester():
                                 
                                 if (detectedOrientation === "front") {
                                     embeddings.push(data.embedding);
-                                    apiResult.innerText = "Sampel 1 (Depan) berhasil diambil secara otomatis!\nMenunggu Anda hadap kanan...";
+                                    apiResult.innerText = "Sampel 1 (Depan) berhasil diambil secara otomatis!\\nMenunggu Anda hadap kanan...";
                                     currentStep = 2;
                                     updateIndicators();
                                 }
@@ -318,7 +318,7 @@ async def webcam_tester():
                                 
                                 if (detectedOrientation === "right") {
                                     embeddings.push(data.embedding);
-                                    apiResult.innerText = "Sampel 2 (Kanan) berhasil diambil secara otomatis!\nMenunggu Anda hadap kiri...";
+                                    apiResult.innerText = "Sampel 2 (Kanan) berhasil diambil secara otomatis!\\nMenunggu Anda hadap kiri...";
                                     currentStep = 3;
                                     updateIndicators();
                                 }

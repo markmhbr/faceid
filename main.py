@@ -245,7 +245,7 @@ async def webcam_tester():
 
             let embeddings = [];
             let currentStep = 0; // 0: Idle, 1: Depan, 2: Kanan, 3: Kiri, 4: Selesai
-            let checkInterval = null;
+            let isDetecting = false;
 
             // Jalankan Kamera
             async function startWebcam() {
@@ -261,6 +261,94 @@ async def webcam_tester():
                 }
             }
 
+            // Loop capture sequential
+            async function captureAndAnalyze() {
+                if (!isDetecting || currentStep < 1 || currentStep > 3) {
+                    isDetecting = false;
+                    return;
+                }
+
+                // Buat frame capture dengan resolusi lebih kecil (320x240) untuk hemat bandwidth & CPU hosting
+                const canvas = document.createElement('canvas');
+                canvas.width = 320;
+                canvas.height = 240;
+                const ctx = canvas.getContext('2d');
+                
+                // Mirror
+                ctx.translate(canvas.width, 0);
+                ctx.scale(-1, 1);
+                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                
+                // Kompresi kualitas JPEG ke 0.8 untuk ukuran file jauh lebih kecil
+                canvas.toBlob(async (blob) => {
+                    if (!blob) {
+                        if (isDetecting && currentStep >= 1 && currentStep <= 3) {
+                            setTimeout(captureAndAnalyze, 200);
+                        }
+                        return;
+                    }
+
+                    const formData = new FormData();
+                    formData.append('file', blob, 'face_stream.jpg');
+
+                    try {
+                        const response = await fetch('/analyze-face', {
+                            method: 'POST',
+                            body: formData
+                        });
+                        const data = await response.json();
+                        
+                        if (data.success) {
+                            const detectedOrientation = data.pose.orientation;
+                            const yaw = data.pose.yaw.toFixed(1);
+                            
+                            if (currentStep === 1) {
+                                statusMsg.innerText = `[Langkah 1] Hadap depan... (Deteksi yaw: ${yaw}, pose: ${detectedOrientation})`;
+                                statusMsg.style.color = "#3b82f6";
+                                
+                                if (detectedOrientation === "front") {
+                                    embeddings.push(data.embedding);
+                                    apiResult.innerText = "Sampel 1 (Depan) berhasil diambil secara otomatis!\nMenunggu Anda hadap kanan...";
+                                    currentStep = 2;
+                                    updateIndicators();
+                                }
+                            } else if (currentStep === 2) {
+                                statusMsg.innerText = `[Langkah 2] Silakan HADAP KANAN... (Deteksi yaw: ${yaw}, pose: ${detectedOrientation})`;
+                                statusMsg.style.color = "#f59e0b";
+                                
+                                if (detectedOrientation === "right") {
+                                    embeddings.push(data.embedding);
+                                    apiResult.innerText = "Sampel 2 (Kanan) berhasil diambil secara otomatis!\nMenunggu Anda hadap kiri...";
+                                    currentStep = 3;
+                                    updateIndicators();
+                                }
+                            } else if (currentStep === 3) {
+                                statusMsg.innerText = `[Langkah 3] Silakan HADAP KIRI... (Deteksi yaw: ${yaw}, pose: ${detectedOrientation})`;
+                                statusMsg.style.color = "#8b5cf6";
+                                
+                                if (detectedOrientation === "left") {
+                                    embeddings.push(data.embedding);
+                                    isDetecting = false;
+                                    currentStep = 4;
+                                    finishEnrollment();
+                                    return;
+                                }
+                            }
+                        } else {
+                            statusMsg.innerText = `Wajah tidak stabil/tidak terdeteksi: ${data.error || 'Ubah pencahayaan'}`;
+                            statusMsg.style.color = "#f87171";
+                        }
+                    } catch (err) {
+                        console.error("Polling error: ", err);
+                    }
+
+                    // Panggil iterasi berikutnya jika proses deteksi masih aktif
+                    if (isDetecting && currentStep >= 1 && currentStep <= 3) {
+                        setTimeout(captureAndAnalyze, 200); // Jeda 200ms setelah request sebelumnya benar-benar selesai
+                    }
+                }, 'image/jpeg', 0.8);
+            }
+
             // Mulai Loop Deteksi Pose Otomatis
             function startPoseDetection() {
                 embeddings = [];
@@ -268,76 +356,8 @@ async def webcam_tester():
                 updateIndicators();
                 
                 apiResult.innerText = "Mulai mendeteksi... Silakan luruskan wajah Anda menghadap ke depan.";
-                
-                checkInterval = setInterval(async () => {
-                    if (currentStep < 1 || currentStep > 3) return;
-
-                    // Buat frame capture
-                    const canvas = document.createElement('canvas');
-                    canvas.width = video.videoWidth;
-                    canvas.height = video.videoHeight;
-                    const ctx = canvas.getContext('2d');
-                    
-                    // Mirror
-                    ctx.translate(canvas.width, 0);
-                    ctx.scale(-1, 1);
-                    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-                    
-                    canvas.toBlob(async (blob) => {
-                        const formData = new FormData();
-                        formData.append('file', blob, 'face_stream.jpg');
-
-                        try {
-                            const response = await fetch('/analyze-face', {
-                                method: 'POST',
-                                body: formData
-                            });
-                            const data = await response.json();
-                            
-                            if (data.success) {
-                                const detectedOrientation = data.pose.orientation;
-                                const yaw = data.pose.yaw.toFixed(1);
-                                
-                                if (currentStep === 1) {
-                                    statusMsg.innerText = `[Langkah 1] Hadap depan... (Deteksi yaw: ${yaw}, pose: ${detectedOrientation})`;
-                                    statusMsg.style.color = "#3b82f6";
-                                    
-                                    if (detectedOrientation === "front") {
-                                        embeddings.push(data.embedding);
-                                        apiResult.innerText = "Sampel 1 (Depan) berhasil diambil secara otomatis!\\nMenunggu Anda hadap kanan...";
-                                        currentStep = 2;
-                                        updateIndicators();
-                                    }
-                                } else if (currentStep === 2) {
-                                    statusMsg.innerText = `[Langkah 2] Silakan HADAP KANAN... (Deteksi yaw: ${yaw}, pose: ${detectedOrientation})`;
-                                    statusMsg.style.color = "#f59e0b";
-                                    
-                                    if (detectedOrientation === "right") {
-                                        embeddings.push(data.embedding);
-                                        apiResult.innerText = "Sampel 2 (Kanan) berhasil diambil secara otomatis!\\nMenunggu Anda hadap kiri...";
-                                        currentStep = 3;
-                                        updateIndicators();
-                                    }
-                                } else if (currentStep === 3) {
-                                    statusMsg.innerText = `[Langkah 3] Silakan HADAP KIRI... (Deteksi yaw: ${yaw}, pose: ${detectedOrientation})`;
-                                    statusMsg.style.color = "#8b5cf6";
-                                    
-                                    if (detectedOrientation === "left") {
-                                        embeddings.push(data.embedding);
-                                        clearInterval(checkInterval);
-                                        currentStep = 4;
-                                        finishEnrollment();
-                                    }
-                                }
-                            } else {
-                                statusMsg.innerText = `Wajah tidak stabil/tidak terdeteksi: ${data.error || 'Ubah pencahayaan'}`;
-                                statusMsg.style.color = "#f87171";
-                            }
-                        } catch (err) {
-                            console.error("Polling error: ", err);
-                        }
-                    }, 'image/jpeg', 0.9);
-                }, 400); // Polling setiap 400ms untuk performa optimal
+                isDetecting = true;
+                captureAndAnalyze();
             }
 
             // Update Tampilan Dots
@@ -351,7 +371,7 @@ async def webcam_tester():
 
             // Selesaikan Pendaftaran
             function finishEnrollment() {
-                statusMsg.innerText = "Pendaftaran Selesai! Mengkalkulasi rata-rata embedding...";
+                statusMsg.innerText = "Pendaftaran Wajah Berhasil!";
                 statusMsg.style.color = "#34d399";
                 
                 dots.forEach(dot => {
@@ -382,7 +402,7 @@ async def webcam_tester():
 
             // Start Btn Event
             startBtn.addEventListener('click', () => {
-                if (checkInterval) clearInterval(checkInterval);
+                isDetecting = false;
                 startBtn.disabled = true;
                 startBtn.innerText = "Mendeteksi...";
                 startPoseDetection();
@@ -403,7 +423,7 @@ async def webcam_tester():
 try:
     # Menggunakan CPU provider agar ramah terhadap resource shared hosting cPanel
     face_app = FaceAnalysis(name='buffalo_s', providers=['CPUExecutionProvider'])
-    face_app.prepare(ctx_id=0, det_size=(640, 640))
+    face_app.prepare(ctx_id=0, det_size=(320, 320))
 except Exception as e:
     print(f"Gagal memuat model InsightFace: {e}")
 

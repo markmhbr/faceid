@@ -402,7 +402,7 @@ async def webcam_tester():
 # Muat model InsightFace (Buffalo_L)
 try:
     # Menggunakan CPU provider agar ramah terhadap resource shared hosting cPanel
-    face_app = FaceAnalysis(name='buffalo_l', providers=['CPUExecutionProvider'])
+    face_app = FaceAnalysis(name='buffalo_s', providers=['CPUExecutionProvider'])
     face_app.prepare(ctx_id=0, det_size=(640, 640))
 except Exception as e:
     print(f"Gagal memuat model InsightFace: {e}")
